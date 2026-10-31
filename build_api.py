@@ -4,6 +4,7 @@ Python standard library only. Requires live BMKG/Open-Meteo network when run nor
 No hard-coded weather observations; all forecasts must come from APIs.
 """
 import argparse
+from bisect import bisect_left
 import datetime as dt
 import json
 import math
@@ -201,15 +202,60 @@ def hull_signed_distance(lon,lat,poly):
     return dist if inside_hull(lon,lat,poly) else -dist
 
 
+def site_uv_at_time(site,time_key,max_interval_hours=3.1):
+    """Read or interpolate BMKG U/V in UTC; never extrapolate or bridge missing 3h cycles.
+
+    BMKG ADM4 forecast windows can have different UTC-hour phases. We interpolate
+    *vector components*, not direction in degrees, between adjacent valid slots.
+    A 6-hour gap (missing 3-hour forecast) is rejected.
+    """
+    rows=site['times']
+    if time_key in rows:return rows[time_key],'exact'
+    keys=sorted(rows)
+    i=bisect_left(keys,time_key)
+    if i==0 or i==len(keys):return None,'outside_forecast'
+    before,after=keys[i-1],keys[i]
+    fmt='%Y-%m-%dT%H:%MZ'
+    left=dt.datetime.strptime(before,fmt).replace(tzinfo=UTC)
+    right=dt.datetime.strptime(after,fmt).replace(tzinfo=UTC)
+    current=dt.datetime.strptime(time_key,fmt).replace(tzinfo=UTC)
+    length=(right-left).total_seconds()
+    if not (0<length<=max_interval_hours*3600):return None,'missing_3h_slot'
+    alpha=(current-left).total_seconds()/length
+    if not 0<alpha<1:return None,'invalid_bracket'
+    a,b=rows[before],rows[after]
+    if not all(math.isfinite(v) for v in a+b):return None,'invalid_uv'
+    return ((1-alpha)*a[0]+alpha*b[0],(1-alpha)*a[1]+alpha*b[1]),'interpolated'
+
+
+def candidate_valid_times(land,sea,now):
+    """Produce 3-hour UTC forecast frames corresponding to 00,03,... WITA."""
+    common=sorted(set(land)&set(sea))
+    available=[]
+    for key in common:
+        timestamp=dt.datetime.strptime(key,'%Y-%m-%dT%H:%MZ').replace(tzinfo=UTC)
+        if timestamp<now-dt.timedelta(hours=1):continue
+        if (timestamp.hour+8)%3!=0:continue
+        available.append(key)
+    return available
+
+
 def build_grid(time_key,land,sea,sites,rings,strength,coast_km):
     points=[]
+    exact_count=0
+    interpolated_count=0
     for site in sites:
-        if time_key not in site['times']:continue
+        uv,temporal_method=site_uv_at_time(site,time_key)
+        if uv is None:continue
         base=bilinear(land,site['lat'],site['lon'])
         if base is None:continue
-        uv=site['times'][time_key]
         points.append({**site,'du':uv[0]-base[0],'dv':uv[1]-base[1]})
-    if len(points)<6 or len(points)/len(sites)<0.6:raise RuntimeError('QC jam tidak mencukupi')
+        if temporal_method=='exact':exact_count+=1
+        else:interpolated_count+=1
+    if len(points)<6 or len(points)/len(sites)<0.6:
+        raise RuntimeError(f'QC jam tidak mencukupi: {len(points)}/{len(sites)} '
+                           f'(exact={exact_count}, temporal_interp={interpolated_count}); '
+                           'minimum 6 dan 60% titik')
     boundary=hull(points)
     if len(boundary)<3:raise RuntimeError('titik terlalu mengelompok untuk interpolasi')
     out_u=[];out_v=[];bmkg_weight_sum=0
@@ -236,8 +282,8 @@ def build_grid(time_key,land,sea,sites,rings,strength,coast_km):
         'valid_time_utc':time_key,'timezone':'UTC','grid':{
             'bounds_wsen':BBOX,'nx':OUT_N,'ny':OUT_N,'u_ms':out_u,'v_ms':out_v,
             'order':'south-to-north rows; west-to-east columns; index=y*nx+x'},
-        'quality':{'bmkg_sites_valid_for_time':len(points),'bmkg_sites_total':len(sites),'coastline':'indikatif v0.7','bmkg_mean_grid_weight':round(bmkg_weight_sum/(OUT_N*OUT_N),4)},
-        'method':{'baseline':'Open-Meteo ncep_gfs_seamless, cell_selection=land & sea','correction':'IDW GFS-land residual at BMKG ADM4 source sites','coastal_transition_km':coast_km,'bmkg_strength':strength},
+        'quality':{'bmkg_sites_valid_for_time':len(points),'bmkg_sites_total':len(sites),'bmkg_sites_exact_time':exact_count,'bmkg_sites_temporally_interpolated':interpolated_count,'coastline':'indikatif v0.7','bmkg_mean_grid_weight':round(bmkg_weight_sum/(OUT_N*OUT_N),4)},
+        'method':{'baseline':'Open-Meteo ncep_gfs_seamless, cell_selection=land & sea','correction':'IDW GFS-land residual at BMKG ADM4 source sites','coastal_transition_km':coast_km,'bmkg_strength':strength,'time_alignment':'BMKG vector U/V linearly interpolated between adjacent forecast slots <= 3.1 h; no extrapolation'},
         'license_note':'Experimental; bukan prakiraan gridded resmi BMKG; bukan dasar perizinan/keselamatan.',
         'sources':[{'name':'BMKG','url':'https://data.bmkg.go.id/prakiraan-cuaca/'},{'name':'Open-Meteo','url':'https://open-meteo.com/','license':'CC BY 4.0'}]
     }
@@ -254,9 +300,9 @@ def main():
     rings=json.loads((ROOT/'geo/coast_indikatif_v07.json').read_text())['rings']
     sites,failed=fetch_bmkg(codes)
     land=fetch_gfs('land');sea=fetch_gfs('sea')
-    common=sorted(set(land)&set(sea)&set().union(*(set(x['times']) for x in sites)))
     now=dt.datetime.now(UTC)
-    common=[t for t in common if dt.datetime.strptime(t,'%Y-%m-%dT%H:%MZ').replace(tzinfo=UTC)>=now-dt.timedelta(hours=1)]
+    common=candidate_valid_times(land,sea,now)
+    print(f'Sinkronisasi: {len(common)} kandidat waktu GFS per 3 jam WITA, BMKG {len(sites)} lokasi', flush=True)
     out=Path(args.output);(out/'grids').mkdir(parents=True,exist_ok=True)
     available=[];errors=[]
     for t in common:
@@ -264,9 +310,13 @@ def main():
             obj=build_grid(t,land[t],sea[t],sites,rings,args.strength,args.coast_km)
             stamp=t.replace('-','').replace(':','')+'.json'
             (out/'grids'/stamp).write_text(json.dumps(obj,separators=(',',':'))+'\n',encoding='utf-8')
-            available.append({'valid_time_utc':t,'file':'grids/'+stamp,'bmkg_sites':obj['quality']['bmkg_sites_valid_for_time']})
+            available.append({'valid_time_utc':t,'file':'grids/'+stamp,'bmkg_sites':obj['quality']['bmkg_sites_valid_for_time'],
+                              'bmkg_sites_temporally_interpolated':obj['quality']['bmkg_sites_temporally_interpolated']})
         except (RuntimeError,ValueError,OverflowError,ZeroDivisionError) as e:errors.append({'time':t,'error':str(e)})
-    if not available:raise RuntimeError('TIDAK DIPUBLIKASIKAN: tidak ada waktu cocok & valid! '+str(errors[:4]))
+    if not available:
+        raise RuntimeError('TIDAK DIPUBLIKASIKAN: tidak ada waktu cocok & valid! '+
+                           str(errors[:8])+
+                           '; periksa jarak waktu BMKG dan cakupan titik serta time zone UTC')
     current=dt.datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
     latest={'api_version':'0.1','generated_at_utc':current,'latest':available[0],
             'available_times':len(available),'bmkg_sites_valid':len(sites),
