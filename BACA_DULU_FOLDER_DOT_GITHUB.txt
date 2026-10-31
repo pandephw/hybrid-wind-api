@@ -1,0 +1,19 @@
+PENTING — FOLDER .github/workflows
+================================
+Folder .github/workflows memang disertakan di ZIP ini, LANGSUNG pada tingkat teratas, dan berisi:
+   .github/workflows/build-and-publish.yml
+
+Jika folder .github tidak kelihatan setelah diekstrak:
+1. Ekstrak ZIP dengan Windows Explorer atau 7-Zip (jangan sekadar preview ZIP).
+2. Pastikan semua file diekstrak, termasuk nama yang diawali titik.
+3. Di Windows File Explorer, aktifkan View > Show > Hidden items.
+4. Atau ketik .github pada address bar di dalam folder hasil ekstraksi, lalu tekan Enter.
+5. Di GitHub web, jika folder tidak terunggah, buat file baru persis bernama:
+      .github/workflows/build-and-publish.yml
+   kemudian salin isinya dari file YAML yang disertakan.
+
+CATATAN UPLOAD KE GITHUB:
+Unggah ISI zip/folder yang telah diekstrak langsung ke ROOT repositori,
+JANGAN upload folder pembungkus. File build_api.py dan .github harus ada di root.
+
+Status: paket proyek contoh, perlu pengujian API langsung dan verifikasi kode ADM4 sebelum publikasi.
