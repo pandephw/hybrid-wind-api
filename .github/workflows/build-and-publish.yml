@@ -1,0 +1,44 @@
+name: Update and publish Hybrid Wind API
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # 4 runs/day in UTC: 10:17, 16:17, 22:17, 04:17 WITA
+    # BMKG updates twice/day; time slots are retries and not publication guarantees.
+    - cron: '17 2,8,14,20 * * *'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests (mocked responses, never published)
+        run: python -m unittest -v test_build_api.py
+      - name: Fetch, validate and calculate from actual APIs
+        run: python build_api.py
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload JSON pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: './public'
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
