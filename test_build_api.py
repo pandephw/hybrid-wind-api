@@ -30,8 +30,62 @@ class HybridTests(unittest.TestCase):
         self.assertAlmostEqual(u,-5.0)
         self.assertAlmostEqual(v,0.0)
 
+
+    def test_temporal_uv_interpolation_between_staggered_3h_forecasts(self):
+        base=dt.datetime(2026,11,1,16,tzinfo=dt.timezone.utc)
+        # Both sites have different forecast phases: 15/18Z and 14/17Z.
+        key=lambda d:d.strftime('%Y-%m-%dT%H:%MZ')
+        site1={'times':{key(base-dt.timedelta(hours=1)):(0.0,3.0),
+                        key(base+dt.timedelta(hours=2)):(6.0,3.0)}}
+        site2={'times':{key(base-dt.timedelta(hours=2)):(0.0,6.0),
+                        key(base+dt.timedelta(hours=1)):(3.0,0.0)}}
+        (u1,v1),method1=b.site_uv_at_time(site1,key(base))
+        (u2,v2),method2=b.site_uv_at_time(site2,key(base))
+        self.assertEqual((method1,method2),('interpolated','interpolated'))
+        self.assertAlmostEqual(u1,2.0)
+        self.assertAlmostEqual(v1,3.0)
+        self.assertAlmostEqual(u2,2.0)
+        self.assertAlmostEqual(v2,2.0)
+
+    def test_temporal_qc_refuses_extrapolation_or_missing_slots(self):
+        base=dt.datetime(2026,11,1,16,tzinfo=dt.timezone.utc)
+        key=lambda d:d.strftime('%Y-%m-%dT%H:%MZ')
+        site={'times':{key(base):(1.0,1.0),key(base+dt.timedelta(hours=6)):(3.0,3.0)}}
+        self.assertEqual(b.site_uv_at_time(site,key(base+dt.timedelta(hours=3)))[1],'missing_3h_slot')
+        self.assertEqual(b.site_uv_at_time(site,key(base-dt.timedelta(hours=1)))[1],'outside_forecast')
+
+    def test_publish_with_staggered_bmkg_times(self):
+        # Regression test for production failure on 31 Oct 2026: successful
+        # upstream fetches but no >=60% sites share the exact same timestamp.
+        start=(dt.datetime.now(dt.timezone.utc)+dt.timedelta(hours=3)).replace(minute=0,second=0,microsecond=0)
+        while (start.hour+8)%3!=0:start+=dt.timedelta(hours=1)
+        stamps=[(start+dt.timedelta(hours=3*j)).strftime('%Y-%m-%dT%H:%M') for j in range(2)]
+        import urllib.parse
+        def fake_request(url,attempts=3):
+            if 'bmkg.go.id' in url:
+                code=url.split('adm4=')[-1]
+                codes=json.loads((b.ROOT/'adm4_bali_selatan.json').read_text())
+                i=next(k for k,p in enumerate(codes) if p['code']==code)
+                phase=-2 if i%2 else -1
+                observations=[{'utc_datetime':(start+dt.timedelta(hours=phase+3*j)).strftime('%Y-%m-%d %H:%M:%S'),
+                               'ws':18,'wd_deg':100} for j in range(4)]
+                return {'lokasi':{'adm4':code,'lat':-8.94+(i//6)*.06,'lon':115.08+(i%6)*.05,'desa':str(i)},
+                        'data':[{'cuaca':[observations]}]}
+            args=urllib.parse.parse_qs(url.split('?')[1]);lats=args['latitude'][0].split(',')
+            return [{'hourly':{'time':stamps,'wind_speed_10m':[6.,6.],
+                               'wind_direction_10m':[120.,120.]}} for _ in lats]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(b,'request_json',side_effect=fake_request), patch.object(b.time,'sleep',return_value=None):
+            with patch('sys.argv',['build_api.py','--output',tmp]):b.main()
+            latest=json.loads((Path(tmp)/'latest.json').read_text())
+            self.assertEqual(latest['available_times'],2)
+            grid=json.loads((Path(tmp)/latest['latest']['file']).read_text())
+            self.assertEqual(grid['quality']['bmkg_sites_valid_for_time'],27)
+            self.assertEqual(grid['quality']['bmkg_sites_temporally_interpolated'],27)
+            self.assertEqual(grid['quality']['bmkg_sites_exact_time'],0)
+
     def test_publish_with_mock_responses(self):
         start=(dt.datetime.now(dt.timezone.utc)+dt.timedelta(hours=3)).replace(minute=0,second=0,microsecond=0)
+        while (start.hour+8)%3 != 0:start+=dt.timedelta(hours=1)
         stamps=[(start+dt.timedelta(hours=3*i)).strftime('%Y-%m-%dT%H:%M') for i in range(2)]
         bmkg_stamps=[(start+dt.timedelta(hours=3*i)).strftime('%Y-%m-%d %H:%M:%S') for i in range(2)]
         seen=[0]
