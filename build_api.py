@@ -18,6 +18,9 @@ ROOT=Path(__file__).resolve().parent
 UTC=dt.timezone.utc
 BMKG='https://api.bmkg.go.id/publik/prakiraan-cuaca'
 GFS='https://api.open-meteo.com/v1/forecast'
+GEM='https://api.open-meteo.com/v1/gem'
+GEM_NATIVE_HEIGHTS=(10,40,80,120)
+PUBLISHED_HEIGHTS=(10,20,30,40,50,80,120)
 N_LAT,N_LON=9,11
 LATS=[-9.25+i/8 for i in range(N_LAT)]
 LONS=[114.75+i/10 for i in range(N_LON)]
@@ -290,49 +293,125 @@ def build_grid(time_key,land,sea,sites,rings,strength,coast_km):
     }
 
 
-def vertical_fraction(height_m):
-    """Log-height interpolation factor for 10-80 m AGL. Not an observed vertical profile."""
-    if not (10 <= height_m <= 80):
-        raise ValueError("Estimasi hanya berada di antara 10 dan 80 m AGL")
-    return math.log(height_m/10.0)/math.log(80.0/10.0)
+def fetch_gem(cell_selection):
+    """Read *native* GEM Global wind at 10, 40, 80, 120 m AGL.
 
-
-def attach_vertical_layers(frame, land80, sea80, rings, coast_km):
-    """Produce 10/20/30/40/50/80 m vector layers; anchor at hybrid10 and GFS80.
-
-    GFS land/sea coast blending for 80 m is consistent with the baseline blending
-    for 10 m. BMKG correction in the hybrid10 anchor diminishes with height.
+    Open-Meteo interpolates GEM Global native 3h forecasts to hourly timestamps.
+    This is *temporal* interpolation by provider, not an extra observed height.
     """
-    g=frame['grid']; n=g['nx']; bb=g['bounds_wsen']
-    u80=[];v80=[]
+    raw=[]
+    for i in range(0,len(POINTS),20):
+        batch=POINTS[i:i+20]
+        variables=','.join(x for h in GEM_NATIVE_HEIGHTS for x in (f'wind_speed_{h}m',f'wind_direction_{h}m'))
+        query={
+            'latitude':','.join(f'{p[0]:.5f}' for p in batch),
+            'longitude':','.join(f'{p[1]:.5f}' for p in batch),
+            'hourly':variables,'models':'gem_global',
+            'cell_selection':cell_selection,'wind_speed_unit':'ms',
+            'timezone':'UTC','forecast_days':'3'
+        }
+        body=request_json(GEM+'?'+urllib.parse.urlencode(query))
+        group=body if isinstance(body,list) else [body]
+        if len(group)!=len(batch):raise RuntimeError('Jumlah titik GEM tidak sesuai permintaan')
+        raw.extend(group)
+        print(f'GEM {cell_selection}: {len(raw)}/{len(POINTS)}',flush=True)
+    times=None
+    columns={h:[] for h in GEM_NATIVE_HEIGHTS}
+    for r in raw:
+        fields=r.get('hourly') or {}
+        t=fields.get('time',[])
+        if not t:raise RuntimeError('GEM: timestamp kosong')
+        newtimes=[epoch_from_utc(x) for x in t]
+        if times is None:times=newtimes
+        if newtimes!=times:raise RuntimeError('GEM: jam antartitik tidak sinkron')
+        for h in GEM_NATIVE_HEIGHTS:
+            sp=fields.get(f'wind_speed_{h}m') or []
+            wd=fields.get(f'wind_direction_{h}m') or []
+            if len(sp)!=len(times) or len(wd)!=len(times):
+                raise RuntimeError(f'GEM: parameter {h} m tidak tersedia untuk semua jam')
+            vec=[]
+            for speed,direction in zip(sp,wd):
+                if speed is None or direction is None:
+                    vec.append((float('nan'),float('nan')))
+                else:
+                    speed=float(speed);direction=float(direction)
+                    if not(math.isfinite(speed) and math.isfinite(direction) and 0<=speed<=120 and 0<=direction<=360):
+                        vec.append((float('nan'),float('nan')))
+                    else:vec.append(wind_to_uv(speed,direction))
+            columns[h].append(vec)
+    return {t:{h:[columns[h][i][j] for i in range(len(POINTS))] for h in GEM_NATIVE_HEIGHTS}
+            for j,t in enumerate(times)}
+
+
+def log_profile_uv(native_profile,z):
+    """Interpolate GEM component profiles in ln(height), no extrapolation."""
+    if z in native_profile:return native_profile[z]
+    if not 10<=z<=120:raise ValueError('Tinggi di luar profil GEM 10–120 m')
+    for lo,hi in zip(GEM_NATIVE_HEIGHTS[:-1],GEM_NATIVE_HEIGHTS[1:]):
+        if lo<=z<=hi:
+            fraction=math.log(z/lo)/math.log(hi/lo)
+            a,b=native_profile[lo],native_profile[hi]
+            return tuple((1-fraction)*a[i]+fraction*b[i] for i in (0,1))
+    raise ValueError('Tidak ada dua lapisan GEM yang mengapit tinggi')
+
+
+def residual_height_weight(height_m):
+    """Transparent *assumed* taper of the hybrid10-GEM10 bias, not measured shear."""
+    if not 10<=height_m<=120:raise ValueError('Tinggi di luar 10-120m')
+    return clamp(1-math.log(height_m/10)/math.log(120/10))
+
+
+def attach_vertical_layers(frame, gem_land, gem_sea, rings, coast_km):
+    """Directly USE GEM 10/40/80/120m and transfer its vertical shear to hybrid10.
+
+    40 m is a *native GEM model height*, corrected by a documented residual taper.
+    20, 30, 50 m are log-height interpolations of GEM U/V profile.
+    Do not silently fill missing GEM layers with GFS historical values.
+    """
+    g=frame['grid'];n=g['nx'];bb=g['bounds_wsen']
+    layers={str(h):{'u_ms':[],'v_ms':[]} for h in PUBLISHED_HEIGHTS}
     for iy in range(n):
         lat=bb[1]+(bb[3]-bb[1])*iy/(n-1)
         for ix in range(n):
             lon=bb[0]+(bb[2]-bb[0])*ix/(n-1)
-            a=bilinear(land80,lat,lon);b=bilinear(sea80,lat,lon)
-            if a is None or b is None:raise RuntimeError('Data GFS 80 m hilang pada grid')
+            index=iy*n+ix
             coast=signed_ring_distance(lon,lat,rings)
             wland=smooth(-coast_km*1000,coast_km*1000,coast)
-            u80.append(b[0]*(1-wland)+a[0]*wland)
-            v80.append(b[1]*(1-wland)+a[1]*wland)
-    layers={}
-    for height_m in (10,20,30,40,50,80):
-        f=vertical_fraction(height_m)
-        uu=[round((1-f)*u0+f*u8,4) for u0,u8 in zip(g['u_ms'],u80)]
-        vv=[round((1-f)*v0+f*v8,4) for v0,v8 in zip(g['v_ms'],v80)]
-        if len(uu)!=n*n or not all(math.isfinite(v) for v in uu+vv):
-            raise RuntimeError('QC lapisan vertikal gagal')
-        layers[str(height_m)]={'u_ms':uu,'v_ms':vv}
+            native={}
+            for h in GEM_NATIVE_HEIGHTS:
+                land=bilinear(gem_land[h],lat,lon)
+                sea=bilinear(gem_sea[h],lat,lon)
+                if land is None or sea is None:
+                    raise RuntimeError(f'GEM {h} m: data hilang atau tidak valid pada grid')
+                native[h]=(sea[0]*(1-wland)+land[0]*wland,
+                           sea[1]*(1-wland)+land[1]*wland)
+            hybrid10=(g['u_ms'][index],g['v_ms'][index])
+            bias=(hybrid10[0]-native[10][0], hybrid10[1]-native[10][1])
+            for h in PUBLISHED_HEIGHTS:
+                u,v=log_profile_uv(native,h)
+                weight=residual_height_weight(h)
+                layers[str(h)]['u_ms'].append(round(u+weight*bias[0],4))
+                layers[str(h)]['v_ms'].append(round(v+weight*bias[1],4))
+    # Preserve the already-proven hybrid10m anchor EXACTLY (including rounding).
+    layers['10']={'u_ms':g['u_ms'][:],'v_ms':g['v_ms'][:]}
+    for h in PUBLISHED_HEIGHTS:
+        vv=layers[str(h)]['u_ms']+layers[str(h)]['v_ms']
+        if len(vv)!=2*n*n or not all(map(math.isfinite,vv)):
+            raise RuntimeError(f'QC wind_layers {h} m gagal')
     g['wind_layers']=layers
-    frame['api_version']='0.2'
-    frame['product']='WindKite experimental hybrid wind, 10-50 m AGL estimated'
+    frame['api_version']='0.3'
+    frame['product']='WindKite experimental hybrid wind with GEM native vertical profile'
     frame['method']['vertical']={
-        'reference_levels_m_agl':[10,80],
-        'interpolated_levels_m_agl':[20,30,40,50],
-        'method':'component-wise logarithmic interpolation between hybrid10m and coast-blended GFS80m',
-        'limitation':'No measured 20-50 m winds; simplistic shear, roughness and stability not resolved; validation needed.'
+        'model':'GEM Global via Open-Meteo /v1/gem',
+        'native_model_levels_m_agl':list(GEM_NATIVE_HEIGHTS),
+        'hybrid_anchored_level_m_agl':10,
+        'interpolated_levels_m_agl':[20,30,50],
+        'method':'GEM model U/V at 10/40/80/120m; log-height interpolation on GEM components; taper of hybrid10-GEM10 vector bias with height',
+        'bias_taper':'w(z)=max(0,1-ln(z/10)/ln(120/10)); chosen research assumption, not calibrated',
+        'note':'40/80/120m fields are native GEM model outputs before hybrid bias correction; published 40/80m are GEM-based adjusted fields, not observations. GEM global 3h native output is made hourly by Open-Meteo.',
+        'limitation':'Not a high-resolution vertical observation; needs validation at Bali coastal sites.'
     }
-    frame['quality']['vertical_80m_gfs_complete']=True
+    frame['quality']['gem_native_height_data_complete']=True
     return frame
 
 
@@ -347,16 +426,16 @@ def main():
     rings=json.loads((ROOT/'geo/coast_indikatif_v07.json').read_text())['rings']
     sites,failed=fetch_bmkg(codes)
     land=fetch_gfs('land');sea=fetch_gfs('sea')
-    land80=fetch_gfs('land',80);sea80=fetch_gfs('sea',80)
+    gem_land=fetch_gem('land');gem_sea=fetch_gem('sea')
     now=dt.datetime.now(UTC)
-    common=[t for t in candidate_valid_times(land,sea,now) if t in land80 and t in sea80]
+    common=[t for t in candidate_valid_times(land,sea,now) if t in gem_land and t in gem_sea]
     print(f'Sinkronisasi: {len(common)} kandidat waktu GFS per 3 jam WITA, BMKG {len(sites)} lokasi', flush=True)
     out=Path(args.output);(out/'grids').mkdir(parents=True,exist_ok=True)
     available=[];errors=[]
     for t in common:
         try:
             obj=build_grid(t,land[t],sea[t],sites,rings,args.strength,args.coast_km)
-            obj=attach_vertical_layers(obj,land80[t],sea80[t],rings,args.coast_km)
+            obj=attach_vertical_layers(obj,gem_land[t],gem_sea[t],rings,args.coast_km)
             stamp=t.replace('-','').replace(':','')+'.json'
             (out/'grids'/stamp).write_text(json.dumps(obj,separators=(',',':'))+'\n',encoding='utf-8')
             available.append({'valid_time_utc':t,'file':'grids/'+stamp,'bmkg_sites':obj['quality']['bmkg_sites_valid_for_time'],
@@ -367,19 +446,22 @@ def main():
                            str(errors[:8])+
                            '; periksa jarak waktu BMKG dan cakupan titik serta time zone UTC')
     current=dt.datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
-    latest={'api_version':'0.2','generated_at_utc':current,'latest':available[0],
+    latest={'api_version':'0.3','generated_at_utc':current,'latest':available[0],
             'available_times':len(available),'bmkg_sites_valid':len(sites),
             'configured_sites':len(codes),'failed_adm4':failed,'failed_times':errors,
-            'warnings':['Eksperimental; bukan data gridded BMKG resmi.','Lapisan 20-50m adalah estimasi profil vertikal, belum tervalidasi.','Data cuaca bukan izin atau keputusan keselamatan kegiatan; otoritas berwenang menilai perizinan.'],
+            'warnings':['Eksperimental; bukan data gridded BMKG resmi.','Profil vertikal GEM (native 10/40/80/120m) terkoreksi dan 20/30/50m terinterpolasi; belum tervalidasi.','Data cuaca bukan izin atau keputusan keselamatan kegiatan; otoritas berwenang menilai perizinan.'],
             'attribution':{'BMKG':'https://data.bmkg.go.id/prakiraan-cuaca/','Open-Meteo':'https://open-meteo.com/ (CC BY 4.0)'}}
     (out/'latest.json').write_text(json.dumps(latest,indent=2,ensure_ascii=False)+'\n')
     (out/'times.json').write_text(json.dumps({'generated_at_utc':current,'times':available},indent=2)+'\n')
-    (out/'metadata.json').write_text(json.dumps({'api_version':'0.2','product':'WindKite Hybrid Wind API prototype',
+    (out/'metadata.json').write_text(json.dumps({'api_version':'0.3','product':'WindKite Hybrid Wind API prototype',
         'domain_wsen':BBOX,'grid_shape':[OUT_N,OUT_N],
-        'wind_heights_m_agl':[10,20,30,40,50,80],
-        'wind_heights_estimated_m_agl':[20,30,40,50],
+        'wind_heights_m_agl':list(PUBLISHED_HEIGHTS),
+        'wind_heights_estimated_m_agl':[20,30,50],
+        'wind_heights_native_gem_m_agl':list(GEM_NATIVE_HEIGHTS),
+        'model_vertical':'gem_global',
+        'method_vertical':'GEM U/V vertical profile, log-level interpolation plus tapered hybrid10 residual correction',
         'documentation':'Read latest.json for available time and then GET file from times.json. Endpoints are static JSON on GitHub Pages.',
-        'model':'ncep_gfs_seamless','method':'Hybrid GFS sea/land with BMKG U/V residual IDW, coastal blending',
+        'model':'ncep_gfs_seamless + gem_global','method':'Hybrid GFS sea/land with BMKG U/V residual IDW, coastal blending',
         'source_attribution':latest['attribution'],'legal_disclaimer':latest['warnings']},indent=2,ensure_ascii=False)+'\n')
     # Preserve public home page when supplied by the repository.
     home=out.parent/'index.html'

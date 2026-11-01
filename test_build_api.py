@@ -54,29 +54,59 @@ class HybridTests(unittest.TestCase):
         self.assertEqual(b.site_uv_at_time(site,key(base+dt.timedelta(hours=3)))[1],'missing_3h_slot')
         self.assertEqual(b.site_uv_at_time(site,key(base-dt.timedelta(hours=1)))[1],'outside_forecast')
 
-    def test_vertical_fraction_bounds_and_monotonic(self):
-        self.assertAlmostEqual(b.vertical_fraction(10),0)
-        self.assertAlmostEqual(b.vertical_fraction(80),1)
-        self.assertTrue(0<b.vertical_fraction(20)<b.vertical_fraction(50)<1)
-        with self.assertRaises(ValueError): b.vertical_fraction(100)
+    def test_log_profile_uv_uses_native_gem_anchors(self):
+        native={10:(0.,0.),40:(4.,2.),80:(8.,4.),120:(12.,6.)}
+        self.assertEqual(b.log_profile_uv(native,40),native[40])
+        f=math.log(20/10)/math.log(40/10)
+        u,v=b.log_profile_uv(native,20)
+        self.assertAlmostEqual(u,4*f);self.assertAlmostEqual(v,2*f)
+        self.assertLess(b.residual_height_weight(40), b.residual_height_weight(20))
+        self.assertAlmostEqual(b.residual_height_weight(10),1)
+        self.assertAlmostEqual(b.residual_height_weight(120),0)
+        with self.assertRaises(ValueError):b.log_profile_uv(native,150)
 
-    def test_vertical_uv_anchors_and_direction_shear(self):
-        # Full 41x41 frame; both endpoints are well-defined vectors.
+    def test_vertical_gem_native_profile_and_hybrid_anchor(self):
         shape=b.OUT_N*b.OUT_N
         frame={'grid':{'nx':b.OUT_N,'ny':b.OUT_N,'bounds_wsen':b.BBOX,
                        'u_ms':[2.0]*shape,'v_ms':[0.0]*shape},
                'method':{},'quality':{}}
-        land80=[(0.,6.)]*len(b.POINTS)
-        sea80=[(0.,6.)]*len(b.POINTS)
+        model={h:[(0.,h/10.)]*len(b.POINTS) for h in b.GEM_NATIVE_HEIGHTS}
         rings=json.loads((b.ROOT/'geo/coast_indikatif_v07.json').read_text())['rings']
-        result=b.attach_vertical_layers(frame,land80,sea80,rings,3.)
+        result=b.attach_vertical_layers(frame,model,model,rings,3.)
         layers=result['grid']['wind_layers']
-        self.assertAlmostEqual(layers['10']['u_ms'][0],2)
-        self.assertAlmostEqual(layers['80']['u_ms'][0],0)
-        self.assertAlmostEqual(layers['80']['v_ms'][0],6)
-        f=b.vertical_fraction(30)
-        self.assertAlmostEqual(layers['30']['u_ms'][0],round(2*(1-f),4))
-        self.assertAlmostEqual(layers['30']['v_ms'][0],round(6*f,4))
+        self.assertEqual(layers['10']['u_ms'],[2.0]*shape)
+        self.assertAlmostEqual(layers['40']['v_ms'][0],round(4-b.residual_height_weight(40),4))
+        self.assertAlmostEqual(layers['40']['u_ms'][0],round(2*b.residual_height_weight(40),4))
+        self.assertAlmostEqual(layers['120']['u_ms'][0],0)
+        self.assertAlmostEqual(layers['120']['v_ms'][0],12)
+        self.assertEqual(sorted(map(int,layers)),list(b.PUBLISHED_HEIGHTS))
+        self.assertEqual(result['method']['vertical']['native_model_levels_m_agl'],[10,40,80,120])
+
+    def test_fetch_gem_direct_native_fields(self):
+        from urllib.parse import parse_qs,urlsplit
+        seen=[]
+        def mock_gem(url,attempts=3):
+            self.assertEqual(urlsplit(url).path,'/v1/gem')
+            q=parse_qs(urlsplit(url).query)
+            self.assertEqual(q['models'][0],'gem_global')
+            heights=[10,40,80,120]
+            for h in heights:
+                self.assertIn('wind_speed_%sm'%h,q['hourly'][0])
+            count=len(q['latitude'][0].split(','))
+            times=['2026-11-01T00:00','2026-11-01T01:00']
+            rows=[]
+            for i in range(count):
+                hourly={'time':times}
+                for h in heights:
+                    hourly[f'wind_speed_{h}m']=[5.,6.]
+                    hourly[f'wind_direction_{h}m']=[90.,100.]
+                rows.append({'hourly':hourly})
+            seen.append(count)
+            return rows
+        with patch.object(b,'request_json',side_effect=mock_gem):result=b.fetch_gem('land')
+        self.assertEqual(sum(seen),len(b.POINTS))
+        self.assertEqual(len(result['2026-11-01T00:00Z'][40]),len(b.POINTS))
+        self.assertTrue(all(math.isfinite(x) for p in result['2026-11-01T00:00Z'][40] for x in p))
 
     def test_publish_with_staggered_bmkg_times(self):
         # Regression test for production failure on 31 Oct 2026: successful
@@ -96,9 +126,14 @@ class HybridTests(unittest.TestCase):
                 return {'lokasi':{'adm4':code,'lat':-8.94+(i//6)*.06,'lon':115.08+(i%6)*.05,'desa':str(i)},
                         'data':[{'cuaca':[observations]}]}
             args=urllib.parse.parse_qs(url.split('?')[1]);lats=args['latitude'][0].split(',')
-            height=80 if 'wind_speed_80m' in args['hourly'][0] else 10
-            return [{'hourly':{'time':stamps,f'wind_speed_{height}m':[9.,9.] if height==80 else [6.,6.],
-                               f'wind_direction_{height}m':[120.,120.]}} for _ in lats]
+            if '/v1/gem?' in url:
+                h={'time':stamps}
+                for height in b.GEM_NATIVE_HEIGHTS:
+                    h[f'wind_speed_{height}m']=[6.+height/20]*2
+                    h[f'wind_direction_{height}m']=[120.,120.]
+                return [{'hourly':h} for _ in lats]
+            return [{'hourly':{'time':stamps,'wind_speed_10m':[6.,6.],
+                               'wind_direction_10m':[120.,120.]}} for _ in lats]
         with tempfile.TemporaryDirectory() as tmp, patch.object(b,'request_json',side_effect=fake_request), patch.object(b.time,'sleep',return_value=None):
             with patch('sys.argv',['build_api.py','--output',tmp]):b.main()
             latest=json.loads((Path(tmp)/'latest.json').read_text())
@@ -122,9 +157,14 @@ class HybridTests(unittest.TestCase):
                         'data':[{'cuaca':[[{'utc_datetime':t,'ws':20+i,'wd_deg':130+i} for i,t in enumerate(bmkg_stamps)]]}]}
             q=__import__('urllib.parse',fromlist=['parse_qs']).parse_qs(url.split('?')[1]);lat=q['latitude'][0].split(',')
             choice=q['cell_selection'][0];speed=6 if choice=='land' else 9
-            height=80 if 'wind_speed_80m' in q['hourly'][0] else 10
-            if height==80:speed+=4
-            return [{'hourly':{'time':stamps,f'wind_speed_{height}m':[speed,speed],f'wind_direction_{height}m':[110,110]}} for _ in lat]
+            if '/v1/gem?' in url:
+                hourly={'time':stamps}
+                for h in b.GEM_NATIVE_HEIGHTS:
+                    hourly[f'wind_speed_{h}m']=[speed+h/20.,speed+h/20.]
+                    hourly[f'wind_direction_{h}m']=[110.,110.]
+                return [{'hourly':hourly} for _ in lat]
+            return [{'hourly':{'time':stamps,'wind_speed_10m':[speed,speed],
+                               'wind_direction_10m':[110,110]}} for _ in lat]
         oldsleep=b.time.sleep
         with tempfile.TemporaryDirectory() as tmp, patch.object(b,'request_json',side_effect=fake_request), patch.object(b.time,'sleep',return_value=None):
             with patch('sys.argv',['build_api.py','--output',tmp]):
@@ -137,7 +177,8 @@ class HybridTests(unittest.TestCase):
             self.assertEqual(len(grid['grid']['u_ms']),41*41)
             self.assertEqual(grid['quality']['bmkg_sites_valid_for_time'],27)
             self.assertTrue(all(math.isfinite(x) for x in grid['grid']['v_ms']))
-            self.assertEqual(sorted(grid['grid']['wind_layers']), ['10','20','30','40','50','80'])
+            self.assertEqual(sorted(grid['grid']['wind_layers']), ['10','120','20','30','40','50','80'])
             self.assertEqual(grid['grid']['wind_layers']['10']['u_ms'],grid['grid']['u_ms'])
+            self.assertEqual(grid['method']['vertical']['model'],'GEM Global via Open-Meteo /v1/gem')
 
 if __name__=='__main__':unittest.main()
