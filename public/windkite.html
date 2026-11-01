@@ -12,14 +12,56 @@
 @media(max-width:780px){body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}.app-header{padding:11px 13px}.logo{width:29px;height:34px}.brand h1{font-size:15px}.brand p{font-size:10px}.header-nav{display:none}.tech-link{font-size:10px;padding:7px 8px}.app-shell{padding:9px;}.intro{margin:4px 3px 10px}.intro h2{font-size:16px}.intro p{font-size:11px}.api-pill{font-size:9px;padding:6px 9px}.app-grid{display:flex;flex-direction:column;gap:10px}.map-surface{position:static;width:100%}.right-rail{width:100%;gap:10px}.map-heading{padding:10px 11px}.map-heading h3{font-size:13px}.map-body{height:45vh;min-height:320px;max-height:520px}.mapbadge{top:12px;max-width:72%;padding:7px 9px;font-size:10px}.map-actions{right:9px;bottom:10px}.outline-btn{font-size:11px;padding:9px}.map-legend{font-size:9px;padding:8px 10px}.foot-note{display:none}.summary{padding:13px}.measurements{gap:6px}.metric{padding:10px 8px}.metric strong{font-size:16px}.forecast{padding:13px}.mobilebar{position:fixed;display:grid;grid-template-columns:repeat(4,1fr);align-items:center;bottom:0;left:0;right:0;z-index:2000;background:#fffffff4;backdrop-filter:blur(14px);border-top:1px solid #dae6ee;padding:5px 6px max(6px,env(safe-area-inset-bottom));box-shadow:0 -4px 18px #082f4b10}.mobilebar button{display:grid;justify-items:center;gap:1px;border:0;background:none;color:#6d8796;font-size:10px;padding:4px 5px}.mobilebar span{font-size:18px;line-height:1.2}.mobilebar button.selected{color:#056ea9;font-weight:800}.app-footer{display:none}}
 @media(max-width:360px){.brand h1{font-size:13px}.brand p{font-size:9px}.tech-link{font-size:9px}.metric strong{font-size:13px}.metric em{font-size:9px}.height-list button{font-size:11px}.api-pill{white-space:normal}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
-</style></head><body>
+
+/* v1.0.1 — tab navigasi fungsional, dengan konten yang benar-benar berganti */
+.header-nav button{border:0;background:transparent;color:#d7eefe;border-radius:10px;padding:9px 13px;font-size:12px;font-weight:700;cursor:pointer}
+.header-nav button.is-active,.header-nav button:hover{background:#fff;color:#0b5181}
+.header-nav button:focus-visible{outline:3px solid #c9f1ff;outline-offset:2px}
+.summary-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.view-cta{color:#126290;border:1px solid #cde2ed;background:#f3faff;padding:9px 12px;font-size:11px;font-weight:740;border-radius:10px;cursor:pointer}
+.view-cta:hover{background:#e6f4fc}
+.context-card{padding:22px}
+.context-card h3{margin:5px 0 9px;font-size:19px;color:#173d59;letter-spacing:-.02em}
+.context-lead{font-size:13px;color:#60798b;line-height:1.65;margin:0 0 15px}
+.analysis-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.analysis-caption{font-size:12px;color:#536f82;line-height:1.65;padding:12px;background:#f2f8fc;border-radius:11px;margin:14px 0}
+.responsibility{padding:13px 14px;background:#edf7f3;color:#30644c;font-size:12px;line-height:1.6;border-radius:12px;margin-bottom:14px}
+.info-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.info-summary>div{background:#f2f8fc;border:1px solid #e1edf4;border-radius:12px;padding:13px;display:grid;gap:5px}
+.info-summary b{font-size:13px;color:#1d567d}.info-summary span{font-size:12px;color:#617c90}
+.profile-panel{margin-top:16px;border-top:1px solid #e3edf3;padding-top:14px}
+.profile-header h4{margin:0;font-size:14px;color:#1a475f}
+.profile-header p{font-size:11px;color:#678296;margin:5px 0 14px;line-height:1.5}
+.profile-rows{display:grid;gap:8px}.profile-row{display:grid;grid-template-columns:46px minmax(0,1fr) 85px;gap:10px;align-items:center}
+.profile-name{font-size:12px;font-weight:770;color:#274c67}.profile-track{height:12px;border-radius:99px;background:#eaf1f6;overflow:hidden}
+.profile-fill{height:100%;border-radius:99px;background:#3d99d0;transition:width .2s}
+.profile-row.selected .profile-fill{background:#1682bf}.profile-row.selected .profile-name{color:#0875b2}
+.profile-value{font-size:11px;color:#4a6e85;text-align:right;white-space:nowrap}.empty-data{color:#7992a4;font-size:12px}
+body[data-view="peta"] #prakiraan,body[data-view="peta"] #analysisCard,body[data-view="peta"] #infoIntro,body[data-view="peta"] .details-stack{display:none}
+body[data-view="prakiraan"] .map-surface,body[data-view="prakiraan"] #ringkasan,body[data-view="prakiraan"] #analysisCard,body[data-view="prakiraan"] #infoIntro,body[data-view="prakiraan"] .details-stack{display:none}
+body[data-view="analisis"] .map-surface,body[data-view="analisis"] #prakiraan,body[data-view="analisis"] #infoIntro,body[data-view="analisis"] #sumber,body[data-view="analisis"] #info{display:none}
+body[data-view="info"] .map-surface,body[data-view="info"] #ringkasan,body[data-view="info"] #prakiraan,body[data-view="info"] #analysisCard,body[data-view="info"] #paparan{display:none}
+body:not([data-view="peta"]) .app-grid{display:block;max-width:960px;margin:0 auto}
+body:not([data-view="peta"]) .right-rail{width:100%;gap:13px}
+body[data-view="info"] .details-stack,body[data-view="analisis"] .details-stack{display:grid}
+body:not([data-view="peta"]) .intro{max-width:960px;margin:0 auto 16px}
+body[data-view="prakiraan"] #prakiraan{padding:24px}
+body[data-view="analisis"] #paparan .content,body[data-view="info"] #sumber .content,body[data-view="info"] #info .content{font-size:12px}
+@media(max-width:780px){.context-card{padding:15px}.analysis-metrics,.info-summary{gap:7px}.context-card h3{font-size:17px}body:not([data-view="peta"]) .app-grid{width:100%}.profile-row{grid-template-columns:38px minmax(0,1fr) 75px;gap:7px}.view-cta{flex:1}.summary-actions{gap:6px}body[data-view="prakiraan"] #prakiraan{padding:15px}}
+@media(max-width:360px){.analysis-metrics,.info-summary{grid-template-columns:1fr}.view-cta{flex:1 1 100%}}
+</style></head><body data-view="peta">
 <header class="app-header">
  <div class="brand"><div class="logo" aria-hidden="true"></div><div><h1>Wind–Kite Dashboard</h1><p>Informasi angin untuk keselamatan penerbangan</p></div></div>
- <nav class="header-nav" aria-label="Navigasi utama"><a class="is-active" href="#peta">▤ Peta</a><a href="#prakiraan">〰 Prakiraan</a><a href="#paparan">▥ Analisis</a><a href="#info">ⓘ Info</a></nav>
+ <nav class="header-nav" aria-label="Navigasi utama">
+  <button type="button" class="is-active" data-nav data-view="peta" aria-current="page">▤ Peta</button>
+  <button type="button" data-nav data-view="prakiraan">〰 Prakiraan</button>
+  <button type="button" data-nav data-view="analisis">▥ Analisis</button>
+  <button type="button" data-nav data-view="info">ⓘ Info</button>
+ </nav>
  <a class="tech-link" href="analisis.html">Analisis teknis ↗</a>
 </header>
 <div class="app-shell">
- <div class="intro"><div><h2>Peta angin Bali Selatan</h2><p>Pilih lokasi dan waktu untuk melihat informasi meteorologi di sekitarmu.</p></div><div class="api-pill"><span id="apiDot" class="api-dot loading"></span><span id="apiLabel">Menghubungkan API…</span></div></div>
+ <div class="intro"><div><h2 id="viewHeading">Peta angin Bali Selatan</h2><p id="viewSummary">Pilih lokasi dan waktu untuk melihat informasi meteorologi di sekitarmu.</p></div><div class="api-pill"><span id="apiDot" class="api-dot loading"></span><span id="apiLabel">Menghubungkan API…</span></div></div>
  <main class="app-grid">
   <section class="surface map-surface" id="peta" aria-label="Peta angin">
    <div class="map-heading"><div><div class="eyebrow">Medan angin prakiraan</div><h3>Kawasan Bandara I Gusti Ngurah Rai</h3></div><span class="source-chip">Hybrid BMKG + GFS/GEM</span></div>
@@ -35,7 +77,7 @@
       <div class="metric winds"><small>Angin</small><strong class="wind-w"><span id="windArrow" class="wind-glyph">↑</span><span id="wind">—</span></strong><em id="windSub">10 m AGL</em></div>
       <div class="metric"><small>Paparan arah</small><strong id="exposure">—</strong><em>Geometris, bukan probabilitas</em></div>
     </div>
-    <div class="disclaimer">ⓘ <b>BMKG menyediakan informasi meteorologi.</b> Keputusan izin kegiatan layang-layang merupakan kewenangan Otoritas Bandar Udara.</div>
+    <div class="disclaimer">ⓘ <b>BMKG menyediakan informasi meteorologi.</b> Keputusan izin kegiatan layang-layang merupakan kewenangan Otoritas Bandar Udara.</div><div class="summary-actions"><button class="view-cta" type="button" data-view="prakiraan">〰 Lihat prakiraan per ketinggian</button><button class="view-cta" type="button" data-view="analisis">▥ Lihat analisis arah</button></div>
    </section>
    <section class="surface forecast" id="prakiraan">
     <div class="section-title"><h3>〰 Prakiraan angin</h3><span class="hint">WITA · AGL</span></div>
@@ -45,8 +87,33 @@
     <div id="status" class="status" role="status" aria-live="polite">Menghubungkan API Hybrid Wind…</div>
     <div id="timeline" class="timeline" aria-label="Pilihan prakiraan menurut waktu"></div>
     <p class="vertical-note">10 m: Hybrid BMKG–GFS. 40 m: profil GEM yang telah disesuaikan. 20/30/50 m: <b>estimasi profil vertikal</b>. Seluruh hasil belum tervalidasi pada setiap ketinggian.</p>
+     <div class="profile-panel" aria-label="Profil angin menurut ketinggian">
+      <div class="profile-header"><h4>Perbandingan angin vertikal di lokasi pilihan</h4><p>Nilai dari grid Hybrid pada waktu yang dipilih; tersedia setelah GPS atau lokasi pada peta ditentukan.</p></div>
+      <div id="profileRows" class="profile-rows" aria-live="polite"><p class="empty-data">Memuat profil angin…</p></div>
+     </div>
    </section>
-   <div class="details-stack">
+    <section id="analysisCard" class="surface context-card" aria-labelledby="analysisHeading">
+      <div class="eyebrow">Analisis meteorologis · bukan perizinan</div>
+      <h3 id="analysisHeading">Paparan arah angin terhadap kawasan bandara</h3>
+      <p class="context-lead">Analisis ini hanya melihat kesesuaian arah angin terhadap lingkaran perhatian radius 3 km yang masih indikatif. Bukan prediksi lintasan layang-layang atau peluang insiden.</p>
+      <div class="analysis-metrics">
+       <div class="field">Ketinggian dan waktu<b id="analysisTime">—</b></div>
+       <div class="field">Jarak menuju batas 3 km<b id="analysisGap">—</b></div>
+       <div class="field">Rentang sudut lingkaran<b id="analysisHalf">—</b></div>
+       <div class="field">Klasifikasi arah<b id="analysisClass">—</b></div>
+      </div>
+      <p id="analysisSentence" class="analysis-caption">Tentukan lokasi dan pilih prakiraan untuk melihat analisis arah.</p>
+      <div class="responsibility"><b>Catatan:</b> Layang-layang yang masih terikat tidak otomatis mengikuti streamline. Evaluasi bahaya penerbangan dan keputusan izin tetap merupakan kewenangan Otoritas Bandar Udara.</div>
+      <button type="button" class="view-cta" data-view="peta">▤ Kembali ke peta dan lokasi</button>
+    </section>
+    <section id="infoIntro" class="surface context-card" aria-labelledby="infoHeading">
+       <div class="eyebrow">Tentang layanan</div>
+       <h3 id="infoHeading">Data cuaca untuk mendukung keselamatan penerbangan</h3>
+       <p class="context-lead">Wind–Kite menampilkan informasi angin dari BMKG dan Open-Meteo, termasuk estimasi profil 20–50 meter. Semua waktu prakiraan ditampilkan dalam WITA.</p>
+       <div class="info-summary"><div><b>BMKG</b><span>Informasi dan analisis meteorologi</span></div><div><b>Otoritas Bandar Udara</b><span>Penilaian dan penerbitan izin kegiatan</span></div></div>
+       <p class="analysis-caption">Peta radius 3, 6, 9 dan 15 km bersifat indikatif; bukan pengganti batas resmi ruang udara dan ketentuan yang berlaku.</p>
+    </section>
+    <div class="details-stack">
     <details id="paparan"><summary>▥ Apa arti paparan arah angin?</summary><div class="content"><div class="fields"><div class="field">Jarak pusat bandara<b id="distVal">—</b></div><div class="field">Arah menuju bandara<b id="bearingVal">—</b></div><div class="field">Arah downwind<b id="toVal">—</b></div><div class="field">Selisih sudut<b id="deltaVal">—</b></div></div><p>Indikator menunjukkan apakah arah angin dari lokasi berpotensi memotong lingkaran analisis radius 3 km (toleransi ±15°). <b>Bukan</b> peluang kejadian layang-layang, lintasan saat tali putus, atau keputusan izin.</p></div></details>
     <details id="sumber"><summary>▤ Sumber data dan kualitas</summary><div class="content"><p id="qc">Menunggu informasi kualitas dan waktu valid API…</p><p>Medan 10 m: BMKG di daratan dan GFS darat/laut dari Open-Meteo. Profil vertikal: GEM Global 10/40/80/120 m; lapisan 20/30/50 m diestimasi dan hasilnya disesuaikan secara bertahap terhadap Hybrid 10 m. Ini adalah <b>produk eksperimental</b>, bukan observasi vertikal langsung.</p><p>Sumber: <a href="https://data.bmkg.go.id/prakiraan-cuaca/" target="_blank" rel="noopener noreferrer">BMKG</a> · <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo (CC BY 4.0)</a>.</p></div></details>
     <details id="info"><summary>ⓘ Batasan dan kewenangan</summary><div class="content"><p>Lingkaran radius 3/6/9/15 km berasal dari pusat analisis yang masih bersifat indikatif. Tidak boleh diperlakukan sebagai pengganti zonasi atau geometri KKOP resmi.</p><p>BMKG memberikan data, prakiraan, dan analisis meteorologi sebagai masukan. <b>Otoritas Bandar Udara</b> berwenang menentukan perizinan berdasarkan keseluruhan persyaratan.</p><p>GPS hanya diakses apabila pengguna memberikan izin pada halaman HTTPS. Lokasi dapat juga dipilih manual dengan mengetuk peta.</p></div></details>
@@ -55,7 +122,7 @@
  </main>
 </div>
 <footer class="app-footer">Wind–Kite • Stasiun Meteorologi Kelas I I Gusti Ngurah Rai • Prakiraan BMKG × Open-Meteo • Bukan aplikasi perizinan</footer>
-<nav class="mobilebar" aria-label="Navigasi cepat"><button type="button" class="selected" data-target="peta"><span>▤</span>Peta</button><button type="button" data-target="ringkasan"><span>⌖</span>Lokasi</button><button type="button" data-target="prakiraan"><span>〰</span>Prakiraan</button><button type="button" data-target="info"><span>ⓘ</span>Info</button></nav>
+<nav class="mobilebar" aria-label="Navigasi cepat"><button type="button" class="selected" data-nav data-view="peta" aria-current="page"><span>▤</span>Peta</button><button type="button" data-nav data-view="prakiraan"><span>〰</span>Prakiraan</button><button type="button" data-nav data-view="analisis"><span>▥</span>Analisis</button><button type="button" data-nav data-view="info"><span>ⓘ</span>Info</button></nav>
 
 <script>
 
@@ -78,7 +145,42 @@ function showMap(text){el('mapbadge').textContent=text;}
 function enableHeights(){document.querySelectorAll('#heights button').forEach(btn=>{const h=+btn.dataset.height;btn.disabled=!(grid?.layers[h]);btn.classList.toggle('active',h===activeHeight);});}
 function parseGrid(payload,time){if(payload?.valid_time_utc!==time)throw Error('Waktu grid tidak cocok');const g=payload?.grid,b=g?.bounds_wsen;if(!g||!Array.isArray(b)||b.length!==4||!Number.isInteger(g.nx)||!Number.isInteger(g.ny)||g.nx<2||g.ny<2||g.nx*g.ny>100000)throw Error('Format grid tidak valid');const n=g.nx*g.ny,layers={};for(const h of [10,20,30,40,50]){const o=h===10?(g.wind_layers?.['10']||{u_ms:g.u_ms,v_ms:g.v_ms}):g.wind_layers?.[String(h)];if(!o)continue;if(!Array.isArray(o.u_ms)||!Array.isArray(o.v_ms)||o.u_ms.length!==n||o.v_ms.length!==n||![...o.u_ms,...o.v_ms].every(x=>typeof x==='number'&&Number.isFinite(x)))throw Error('Grid angin '+h+'m tidak valid');layers[h]={u:o.u_ms,v:o.v_ms};}if(!layers[10])throw Error('Lapisan 10 m tidak tersedia');return {nx:g.nx,ny:g.ny,bounds:b,layers,quality:payload.quality};}
 function windAt(lat,lng){if(!grid||!grid.layers[activeHeight])return null;const [w,s,e,n]=grid.bounds;if(lat<s||lat>n||lng<w||lng>e)return null;const tx=(lng-w)/(e-w)*(grid.nx-1),ty=(lat-s)/(n-s)*(grid.ny-1),x=Math.min(grid.nx-2,Math.max(0,Math.floor(tx))),y=Math.min(grid.ny-2,Math.max(0,Math.floor(ty))),a=tx-x,b=ty-y,i=y*grid.nx+x,obj=grid.layers[activeHeight];const interp=p=>(1-b)*((1-a)*p[i]+a*p[i+1])+b*((1-a)*p[i+grid.nx]+a*p[i+grid.nx+1]);return {u:interp(obj.u),v:interp(obj.v)};}
-function updateSummary(){if(site){const d=km(site,ARP);el('zone').textContent=d<3?'0–3 km':d<6?'3–6 km':d<9?'6–9 km':d<15?'9–15 km':'>15 km';el('distanceSub').textContent=d.toFixed(2)+' km';el('distVal').textContent=d.toFixed(2)+' km';el('bearingVal').textContent=Math.round(azimuth(site,ARP))+'°';}else{el('zone').textContent='—';el('distanceSub').textContent='Pilih lokasi';el('distVal').textContent='—';el('bearingVal').textContent='—';}if(!site||!grid){el('wind').textContent='—';el('exposure').textContent='—';el('toVal').textContent='—';el('deltaVal').textContent='—';return;}const u=windAt(site.lat,site.lng);if(!u){el('wind').textContent='Di luar grid';el('exposure').textContent='—';return;}const d=km(site,ARP),dir=fromDir(u.u,u.v),to=norm(dir+180),delta=angle(to,azimuth(site,ARP)),gamma=d>3?deg(Math.asin(Math.min(1,3/d))):180;el('wind').textContent=card8(dir)+' '+(Math.hypot(u.u,u.v)*1.943844492).toFixed(1)+' kt';el('windSub').textContent='Dari '+Math.round(dir)+'° · '+activeHeight+' m AGL';el('exposure').textContent=d<=3?'Dalam radius':delta<=gamma?'Mengarah':delta<=gamma+15?'Dekat sektor':'Menjauhi';el('toVal').textContent=Math.round(to)+'°';el('deltaVal').textContent=delta.toFixed(1)+'°';const a=el('windArrow');if(a)a.style.transform='rotate('+to+'deg)';}
+function windAtHeight(lat,lng,height){
+ if(!grid?.layers[height])return null;
+ const [w,s,e,n]=grid.bounds;
+ if(lat<s||lat>n||lng<w||lng>e)return null;
+ const tx=(lng-w)/(e-w)*(grid.nx-1),ty=(lat-s)/(n-s)*(grid.ny-1),x=Math.min(grid.nx-2,Math.max(0,Math.floor(tx))),y=Math.min(grid.ny-2,Math.max(0,Math.floor(ty))),a=tx-x,b=ty-y,i=y*grid.nx+x,obj=grid.layers[height];
+ const interp=p=>(1-b)*((1-a)*p[i]+a*p[i+1])+b*((1-a)*p[i+grid.nx]+a*p[i+grid.nx+1]);
+ return {u:interp(obj.u),v:interp(obj.v)};
+}
+function updateProfile(){
+ const holder=el('profileRows');if(!holder)return;
+ holder.replaceChildren();
+ if(!site||!grid){holder.innerHTML='<p class="empty-data">Tentukan titik melalui tombol GPS atau peta agar profil angin di lokasi dapat ditampilkan.</p>';return;}
+ const obs=[10,20,30,40,50].map(h=>({h,uv:windAtHeight(site.lat,site.lng,h)})).filter(v=>v.uv);
+ if(!obs.length){holder.innerHTML='<p class="empty-data">Lokasi di luar cakupan grid prakiraan.</p>';return;}
+ const limit=Math.max(12,...obs.map(a=>Math.hypot(a.uv.u,a.uv.v)*1.943844492))*1.08;
+ obs.forEach(({h,uv})=>{
+  const spd=Math.hypot(uv.u,uv.v)*1.943844492,dir=fromDir(uv.u,uv.v);
+  const row=document.createElement('div');row.className='profile-row'+(h===activeHeight?' selected':'');
+  const name=document.createElement('span');name.className='profile-name';name.textContent=h+' m';
+  const track=document.createElement('div');track.className='profile-track';
+  const fill=document.createElement('div');fill.className='profile-fill';fill.style.width=(100*spd/limit).toFixed(1)+'%';track.appendChild(fill);
+  const value=document.createElement('span');value.className='profile-value';value.textContent=card8(dir)+' '+spd.toFixed(1)+' kt';
+  row.append(name,track,value);holder.appendChild(row);
+ });
+}
+function updateAnalysis(){
+ const ids=['analysisTime','analysisGap','analysisHalf','analysisClass','analysisSentence'];if(!ids.every(id=>el(id)))return;
+ if(!site||!grid){el('analysisTime').textContent='—';el('analysisGap').textContent='—';el('analysisHalf').textContent='—';el('analysisClass').textContent='—';el('analysisSentence').textContent='Pilih lokasi dan prakiraan untuk melihat analisis geometris.';return;}
+ const uv=windAt(site.lat,site.lng);if(!uv){el('analysisSentence').textContent='Lokasi di luar grid prakiraan';return;}
+ const d=km(site,ARP),b=azimuth(site,ARP),from=fromDir(uv.u,uv.v),to=norm(from+180),delta=angle(to,b),half=d>3?deg(Math.asin(Math.min(1,3/d))):180;
+ const cls=d<=3?'Di dalam radius perhatian':delta<=half?'Arah menuju area perhatian':delta<=half+15?'Dekat sektor perhatian':'Arah menjauhi area perhatian';
+ el('analysisTime').textContent=activeHeight+' m · '+prettyTime(curTime)+' WITA';el('analysisGap').textContent=(Math.max(0,d-3)).toFixed(2)+' km';
+ el('analysisHalf').textContent=d>3?'±'+half.toFixed(1)+'°':'Di dalam radius';el('analysisClass').textContent=cls;
+ el('analysisSentence').textContent='Dari lokasi ini, angin menuju '+Math.round(to)+'° dengan selisih sudut '+delta.toFixed(1)+'° dari arah ke pusat bandara ('+Math.round(b)+'°). Interpretasi hanya kesesuaian arah angin 10–50 m terhadap lingkaran indikatif, bukan kemungkinan layang-layang mencapai bandara.';
+}
+function updateSummary(){updateProfile();updateAnalysis();if(site){const d=km(site,ARP);el('zone').textContent=d<3?'0–3 km':d<6?'3–6 km':d<9?'6–9 km':d<15?'9–15 km':'>15 km';el('distanceSub').textContent=d.toFixed(2)+' km';el('distVal').textContent=d.toFixed(2)+' km';el('bearingVal').textContent=Math.round(azimuth(site,ARP))+'°';}else{el('zone').textContent='—';el('distanceSub').textContent='Pilih lokasi';el('distVal').textContent='—';el('bearingVal').textContent='—';}if(!site||!grid){el('wind').textContent='—';el('exposure').textContent='—';el('toVal').textContent='—';el('deltaVal').textContent='—';return;}const u=windAt(site.lat,site.lng);if(!u){el('wind').textContent='Di luar grid';el('exposure').textContent='—';return;}const d=km(site,ARP),dir=fromDir(u.u,u.v),to=norm(dir+180),delta=angle(to,azimuth(site,ARP)),gamma=d>3?deg(Math.asin(Math.min(1,3/d))):180;el('wind').textContent=card8(dir)+' '+(Math.hypot(u.u,u.v)*1.943844492).toFixed(1)+' kt';el('windSub').textContent='Dari '+Math.round(dir)+'° · '+activeHeight+' m AGL';el('exposure').textContent=d<=3?'Dalam radius':delta<=gamma?'Mengarah':delta<=gamma+15?'Dekat sektor':'Menjauhi';el('toVal').textContent=Math.round(to)+'°';el('deltaVal').textContent=delta.toFixed(1)+'°';const a=el('windArrow');if(a)a.style.transform='rotate('+to+'deg)';}
 function setSite(lat,lng,fromGPS=false,acc=null){site={lat,lng};if(sitePin)m.removeLayer(sitePin);if(gpsAccuracy)m.removeLayer(gpsAccuracy);sitePin=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class="gpspin"></div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(m);if(fromGPS&&acc>0)gpsAccuracy=L.circle([lat,lng],{radius:acc,color:'#1189bf',weight:1,fillOpacity:.07,interactive:false}).addTo(m);el('locationTitle').textContent=fromGPS?'Posisi perangkat (GPS)':'Posisi dipilih pada peta';el('locationCoord').textContent=lat.toFixed(5)+'°, '+lng.toFixed(5)+'°'+(acc?' · ±'+Math.round(acc)+' m':'');m.panTo([lat,lng]);updateSummary();}
 function findGPS(){if(!window.isSecureContext){el('locationCoord').textContent='GPS perlu HTTPS/localhost; ketuk lokasi pada peta.';return;}if(!navigator.geolocation){el('locationCoord').textContent='GPS tidak tersedia; ketuk peta.';return;}el('locationTitle').textContent='Meminta izin lokasi…';navigator.geolocation.getCurrentPosition(p=>setSite(p.coords.latitude,p.coords.longitude,true,p.coords.accuracy),e=>{el('locationTitle').textContent='Lokasi belum terdeteksi';el('locationCoord').textContent=(e.code===1?'Izin lokasi ditolak. ':'GPS belum tersedia. ')+'Pilih titik secara manual pada peta.';},{enableHighAccuracy:true,maximumAge:30000,timeout:12000});}
 el('gpsMap').onclick=findGPS;el('gpsCard').onclick=findGPS;m.on('click',e=>setSite(e.latlng.lat,e.latlng.lng));
@@ -92,7 +194,27 @@ document.querySelectorAll('#heights button').forEach(b=>b.onclick=()=>{const h=+
 const canvas=el('flow'),ctx=canvas.getContext('2d');let particles=[],tickPrevious=0;function spawn(){const b=m.getBounds();return{lat:b.getSouth()+Math.random()*(b.getNorth()-b.getSouth()),lng:b.getWest()+Math.random()*(b.getEast()-b.getWest()),life:Math.random()*110};}function resetFlow(){const r=canvas.getBoundingClientRect();canvas.width=Math.max(1,Math.round(r.width));canvas.height=Math.max(1,Math.round(r.height));particles=Array.from({length:Math.min(230,Math.round(canvas.width*canvas.height/1550))},spawn);}
 function tick(t){requestAnimationFrame(tick);if(!grid||!animated||t-tickPrevious<35)return;tickPrevious=t;/* v0.9.1: fade HANYA pixel jejak streamline yang sudah ada. Jangan menggambar lapisan warna baru karena akan memutihkan peta Leaflet. */ctx.save();ctx.globalCompositeOperation='destination-in';ctx.fillStyle='rgba(0,0,0,.90)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();ctx.strokeStyle='rgba(8,91,170,.72)';ctx.lineWidth=1.25;for(const p of particles){const xy=m.latLngToContainerPoint([p.lat,p.lng]),uv=windAt(p.lat,p.lng);if(!uv||xy.x<0||xy.y<0||xy.x>canvas.width||xy.y>canvas.height||p.life>130){Object.assign(p,spawn());continue;}const next={lat:p.lat+uv.v*25/111200,lng:p.lng+uv.u*25/(111200*Math.cos(rad(p.lat)))},nxy=m.latLngToContainerPoint(next);if(nxy.x<0||nxy.y<0||nxy.x>canvas.width||nxy.y>canvas.height){Object.assign(p,spawn());continue;}ctx.beginPath();ctx.moveTo(xy.x,xy.y);ctx.lineTo(nxy.x,nxy.y);ctx.stroke();p.lat=next.lat;p.lng=next.lng;p.life++;}}
 el('toggleFlow').onclick=()=>{animated=!animated;el('toggleFlow').textContent='〰 Streamline '+(animated?'ON':'OFF');resetFlow();};m.on('zoomend moveend',resetFlow);new ResizeObserver(()=>{m.invalidateSize();resetFlow();}).observe(el('map'));
-document.querySelectorAll('.mobilebar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.mobilebar button').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');const target=el(b.dataset.target);if(target.tagName==='DETAILS')target.open=true;target.scrollIntoView({behavior:'smooth',block:'start'});});
+
+const VIEW_LABELS={
+ peta:['Peta angin Bali Selatan','Lokasi, zonasi indikatif, dan prakiraan angin di sekitar kawasan bandara.'],
+ prakiraan:['Prakiraan angin multi-ketinggian','Pilih waktu dan ketinggian, lalu bandingkan profil angin di lokasi terpilih.'],
+ analisis:['Analisis paparan arah angin','Informasi geometris meteorologis sebagai bahan pertimbangan, bukan keputusan perizinan.'],
+ info:['Informasi layanan dan sumber data','Ketahui sumber model angin, kualitas, keterbatasan dan kewenangan.']
+};
+function switchView(view,updateHistory=true){
+ if(!Object.prototype.hasOwnProperty.call(VIEW_LABELS,view))view='peta';
+ document.body.dataset.view=view;
+ el('viewHeading').textContent=VIEW_LABELS[view][0];el('viewSummary').textContent=VIEW_LABELS[view][1];
+ document.querySelectorAll('[data-nav]').forEach(btn=>{const selected=btn.dataset.view===view;btn.classList.toggle('is-active',selected);btn.classList.toggle('selected',selected);if(selected)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current');});
+ if(view==='analisis')el('paparan').open=true;
+ if(view==='info'){el('sumber').open=true;el('info').open=true;}
+ if(updateHistory&&location.hash!=='#'+view)history.replaceState(null,'','#'+view);
+ if(view==='peta')requestAnimationFrame(()=>{m.invalidateSize();resetFlow();});
+ window.scrollTo({top:0,behavior:'auto'});
+}
+document.querySelectorAll('[data-view]').forEach(btn=>btn.addEventListener('click',()=>switchView(btn.dataset.view)));
+window.addEventListener('hashchange',()=>switchView(location.hash.slice(1),false));
+switchView(location.hash.slice(1)||'peta',false);
 resetFlow();tick(0);void loadManifest();if(window.isSecureContext)findGPS();else el('locationCoord').textContent='Akses GPS butuh HTTPS. Ketuk peta untuk memilih lokasi.';
 
 </script></body></html>
