@@ -54,6 +54,30 @@ class HybridTests(unittest.TestCase):
         self.assertEqual(b.site_uv_at_time(site,key(base+dt.timedelta(hours=3)))[1],'missing_3h_slot')
         self.assertEqual(b.site_uv_at_time(site,key(base-dt.timedelta(hours=1)))[1],'outside_forecast')
 
+    def test_vertical_fraction_bounds_and_monotonic(self):
+        self.assertAlmostEqual(b.vertical_fraction(10),0)
+        self.assertAlmostEqual(b.vertical_fraction(80),1)
+        self.assertTrue(0<b.vertical_fraction(20)<b.vertical_fraction(50)<1)
+        with self.assertRaises(ValueError): b.vertical_fraction(100)
+
+    def test_vertical_uv_anchors_and_direction_shear(self):
+        # Full 41x41 frame; both endpoints are well-defined vectors.
+        shape=b.OUT_N*b.OUT_N
+        frame={'grid':{'nx':b.OUT_N,'ny':b.OUT_N,'bounds_wsen':b.BBOX,
+                       'u_ms':[2.0]*shape,'v_ms':[0.0]*shape},
+               'method':{},'quality':{}}
+        land80=[(0.,6.)]*len(b.POINTS)
+        sea80=[(0.,6.)]*len(b.POINTS)
+        rings=json.loads((b.ROOT/'geo/coast_indikatif_v07.json').read_text())['rings']
+        result=b.attach_vertical_layers(frame,land80,sea80,rings,3.)
+        layers=result['grid']['wind_layers']
+        self.assertAlmostEqual(layers['10']['u_ms'][0],2)
+        self.assertAlmostEqual(layers['80']['u_ms'][0],0)
+        self.assertAlmostEqual(layers['80']['v_ms'][0],6)
+        f=b.vertical_fraction(30)
+        self.assertAlmostEqual(layers['30']['u_ms'][0],round(2*(1-f),4))
+        self.assertAlmostEqual(layers['30']['v_ms'][0],round(6*f,4))
+
     def test_publish_with_staggered_bmkg_times(self):
         # Regression test for production failure on 31 Oct 2026: successful
         # upstream fetches but no >=60% sites share the exact same timestamp.
@@ -72,8 +96,9 @@ class HybridTests(unittest.TestCase):
                 return {'lokasi':{'adm4':code,'lat':-8.94+(i//6)*.06,'lon':115.08+(i%6)*.05,'desa':str(i)},
                         'data':[{'cuaca':[observations]}]}
             args=urllib.parse.parse_qs(url.split('?')[1]);lats=args['latitude'][0].split(',')
-            return [{'hourly':{'time':stamps,'wind_speed_10m':[6.,6.],
-                               'wind_direction_10m':[120.,120.]}} for _ in lats]
+            height=80 if 'wind_speed_80m' in args['hourly'][0] else 10
+            return [{'hourly':{'time':stamps,f'wind_speed_{height}m':[9.,9.] if height==80 else [6.,6.],
+                               f'wind_direction_{height}m':[120.,120.]}} for _ in lats]
         with tempfile.TemporaryDirectory() as tmp, patch.object(b,'request_json',side_effect=fake_request), patch.object(b.time,'sleep',return_value=None):
             with patch('sys.argv',['build_api.py','--output',tmp]):b.main()
             latest=json.loads((Path(tmp)/'latest.json').read_text())
@@ -97,7 +122,9 @@ class HybridTests(unittest.TestCase):
                         'data':[{'cuaca':[[{'utc_datetime':t,'ws':20+i,'wd_deg':130+i} for i,t in enumerate(bmkg_stamps)]]}]}
             q=__import__('urllib.parse',fromlist=['parse_qs']).parse_qs(url.split('?')[1]);lat=q['latitude'][0].split(',')
             choice=q['cell_selection'][0];speed=6 if choice=='land' else 9
-            return [{'hourly':{'time':stamps,'wind_speed_10m':[speed,speed],'wind_direction_10m':[110,110]}} for _ in lat]
+            height=80 if 'wind_speed_80m' in q['hourly'][0] else 10
+            if height==80:speed+=4
+            return [{'hourly':{'time':stamps,f'wind_speed_{height}m':[speed,speed],f'wind_direction_{height}m':[110,110]}} for _ in lat]
         oldsleep=b.time.sleep
         with tempfile.TemporaryDirectory() as tmp, patch.object(b,'request_json',side_effect=fake_request), patch.object(b.time,'sleep',return_value=None):
             with patch('sys.argv',['build_api.py','--output',tmp]):
@@ -110,5 +137,7 @@ class HybridTests(unittest.TestCase):
             self.assertEqual(len(grid['grid']['u_ms']),41*41)
             self.assertEqual(grid['quality']['bmkg_sites_valid_for_time'],27)
             self.assertTrue(all(math.isfinite(x) for x in grid['grid']['v_ms']))
+            self.assertEqual(sorted(grid['grid']['wind_layers']), ['10','20','30','40','50','80'])
+            self.assertEqual(grid['grid']['wind_layers']['10']['u_ms'],grid['grid']['u_ms'])
 
 if __name__=='__main__':unittest.main()

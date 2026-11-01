@@ -98,14 +98,15 @@ def fetch_bmkg(codes):
     return sites,failed
 
 
-def fetch_gfs(cell_selection):
+def fetch_gfs(cell_selection, height_m=10):
+    if height_m not in (10,80): raise ValueError("Ketinggian GFS hanya 10 m atau 80 m")
     raw=[]
     for i in range(0,len(POINTS),20):
         batch=POINTS[i:i+20]
         q={
             'latitude':','.join(f'{p[0]:.5f}' for p in batch),
             'longitude':','.join(f'{p[1]:.5f}' for p in batch),
-            'hourly':'wind_speed_10m,wind_direction_10m',
+            'hourly':f'wind_speed_{height_m}m,wind_direction_{height_m}m',
             'models':'ncep_gfs_seamless','cell_selection':cell_selection,
             'wind_speed_unit':'ms','timezone':'UTC','forecast_days':'3'
         }
@@ -118,8 +119,8 @@ def fetch_gfs(cell_selection):
     for r in raw:
         h=r.get('hourly') or {}
         t=h.get('time',[])
-        sp=h.get('wind_speed_10m',[])
-        wd=h.get('wind_direction_10m',[])
+        sp=h.get(f'wind_speed_{height_m}m',[])
+        wd=h.get(f'wind_direction_{height_m}m',[])
         if not t or len(sp)!=len(t) or len(wd)!=len(t):raise RuntimeError('GFS respons tidak lengkap')
         newtimes=[epoch_from_utc(x) for x in t]
         if times is None:times=newtimes
@@ -289,6 +290,52 @@ def build_grid(time_key,land,sea,sites,rings,strength,coast_km):
     }
 
 
+def vertical_fraction(height_m):
+    """Log-height interpolation factor for 10-80 m AGL. Not an observed vertical profile."""
+    if not (10 <= height_m <= 80):
+        raise ValueError("Estimasi hanya berada di antara 10 dan 80 m AGL")
+    return math.log(height_m/10.0)/math.log(80.0/10.0)
+
+
+def attach_vertical_layers(frame, land80, sea80, rings, coast_km):
+    """Produce 10/20/30/40/50/80 m vector layers; anchor at hybrid10 and GFS80.
+
+    GFS land/sea coast blending for 80 m is consistent with the baseline blending
+    for 10 m. BMKG correction in the hybrid10 anchor diminishes with height.
+    """
+    g=frame['grid']; n=g['nx']; bb=g['bounds_wsen']
+    u80=[];v80=[]
+    for iy in range(n):
+        lat=bb[1]+(bb[3]-bb[1])*iy/(n-1)
+        for ix in range(n):
+            lon=bb[0]+(bb[2]-bb[0])*ix/(n-1)
+            a=bilinear(land80,lat,lon);b=bilinear(sea80,lat,lon)
+            if a is None or b is None:raise RuntimeError('Data GFS 80 m hilang pada grid')
+            coast=signed_ring_distance(lon,lat,rings)
+            wland=smooth(-coast_km*1000,coast_km*1000,coast)
+            u80.append(b[0]*(1-wland)+a[0]*wland)
+            v80.append(b[1]*(1-wland)+a[1]*wland)
+    layers={}
+    for height_m in (10,20,30,40,50,80):
+        f=vertical_fraction(height_m)
+        uu=[round((1-f)*u0+f*u8,4) for u0,u8 in zip(g['u_ms'],u80)]
+        vv=[round((1-f)*v0+f*v8,4) for v0,v8 in zip(g['v_ms'],v80)]
+        if len(uu)!=n*n or not all(math.isfinite(v) for v in uu+vv):
+            raise RuntimeError('QC lapisan vertikal gagal')
+        layers[str(height_m)]={'u_ms':uu,'v_ms':vv}
+    g['wind_layers']=layers
+    frame['api_version']='0.2'
+    frame['product']='WindKite experimental hybrid wind, 10-50 m AGL estimated'
+    frame['method']['vertical']={
+        'reference_levels_m_agl':[10,80],
+        'interpolated_levels_m_agl':[20,30,40,50],
+        'method':'component-wise logarithmic interpolation between hybrid10m and coast-blended GFS80m',
+        'limitation':'No measured 20-50 m winds; simplistic shear, roughness and stability not resolved; validation needed.'
+    }
+    frame['quality']['vertical_80m_gfs_complete']=True
+    return frame
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--strength',type=float,default=1.0)
@@ -300,14 +347,16 @@ def main():
     rings=json.loads((ROOT/'geo/coast_indikatif_v07.json').read_text())['rings']
     sites,failed=fetch_bmkg(codes)
     land=fetch_gfs('land');sea=fetch_gfs('sea')
+    land80=fetch_gfs('land',80);sea80=fetch_gfs('sea',80)
     now=dt.datetime.now(UTC)
-    common=candidate_valid_times(land,sea,now)
+    common=[t for t in candidate_valid_times(land,sea,now) if t in land80 and t in sea80]
     print(f'Sinkronisasi: {len(common)} kandidat waktu GFS per 3 jam WITA, BMKG {len(sites)} lokasi', flush=True)
     out=Path(args.output);(out/'grids').mkdir(parents=True,exist_ok=True)
     available=[];errors=[]
     for t in common:
         try:
             obj=build_grid(t,land[t],sea[t],sites,rings,args.strength,args.coast_km)
+            obj=attach_vertical_layers(obj,land80[t],sea80[t],rings,args.coast_km)
             stamp=t.replace('-','').replace(':','')+'.json'
             (out/'grids'/stamp).write_text(json.dumps(obj,separators=(',',':'))+'\n',encoding='utf-8')
             available.append({'valid_time_utc':t,'file':'grids/'+stamp,'bmkg_sites':obj['quality']['bmkg_sites_valid_for_time'],
@@ -318,19 +367,24 @@ def main():
                            str(errors[:8])+
                            '; periksa jarak waktu BMKG dan cakupan titik serta time zone UTC')
     current=dt.datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
-    latest={'api_version':'0.1','generated_at_utc':current,'latest':available[0],
+    latest={'api_version':'0.2','generated_at_utc':current,'latest':available[0],
             'available_times':len(available),'bmkg_sites_valid':len(sites),
             'configured_sites':len(codes),'failed_adm4':failed,'failed_times':errors,
-            'warnings':['Eksperimental; bukan data gridded BMKG resmi.','GPS atau angin 10 m tidak menentukan status aman kegiatan layang-layang.'],
+            'warnings':['Eksperimental; bukan data gridded BMKG resmi.','Lapisan 20-50m adalah estimasi profil vertikal, belum tervalidasi.','Data cuaca bukan izin atau keputusan keselamatan kegiatan; otoritas berwenang menilai perizinan.'],
             'attribution':{'BMKG':'https://data.bmkg.go.id/prakiraan-cuaca/','Open-Meteo':'https://open-meteo.com/ (CC BY 4.0)'}}
     (out/'latest.json').write_text(json.dumps(latest,indent=2,ensure_ascii=False)+'\n')
     (out/'times.json').write_text(json.dumps({'generated_at_utc':current,'times':available},indent=2)+'\n')
-    (out/'metadata.json').write_text(json.dumps({'api_version':'0.1','product':'WindKite Hybrid Wind API prototype',
+    (out/'metadata.json').write_text(json.dumps({'api_version':'0.2','product':'WindKite Hybrid Wind API prototype',
         'domain_wsen':BBOX,'grid_shape':[OUT_N,OUT_N],
+        'wind_heights_m_agl':[10,20,30,40,50,80],
+        'wind_heights_estimated_m_agl':[20,30,40,50],
         'documentation':'Read latest.json for available time and then GET file from times.json. Endpoints are static JSON on GitHub Pages.',
         'model':'ncep_gfs_seamless','method':'Hybrid GFS sea/land with BMKG U/V residual IDW, coastal blending',
         'source_attribution':latest['attribution'],'legal_disclaimer':latest['warnings']},indent=2,ensure_ascii=False)+'\n')
-    (out.parent/'index.html').write_text('<!doctype html><meta charset="utf-8"><title>WindKite Hybrid Wind API</title><h1>WindKite Hybrid Wind API</h1><p>Eksperimental. Bukan produk prakiraan resmi BMKG.</p><p><a href="v1/latest.json">Latest</a> · <a href="v1/times.json">Times</a> · <a href="v1/metadata.json">Metadata</a></p><p>Sources: BMKG and Open-Meteo (CC BY 4.0).</p>')
+    # Preserve public home page when supplied by the repository.
+    home=out.parent/'index.html'
+    if not home.exists():
+        home.write_text('<!doctype html><meta charset="utf-8"><title>WindKite Hybrid Wind API</title><h1>WindKite Hybrid Wind API</h1><p>Eksperimental. Bukan produk prakiraan resmi BMKG.</p><p><a href="v1/latest.json">Latest</a> · <a href="v1/times.json">Times</a> · <a href="v1/metadata.json">Metadata</a></p><p>Sources: BMKG and Open-Meteo (CC BY 4.0).</p>')
     print(f'SUKSES: {len(available)} grid hybrid dipublikasikan pada {out}; invalid ADM4: {len(failed)}; invalid time: {len(errors)}')
 
 if __name__=='__main__':main()
