@@ -1,0 +1,27 @@
+name: Uji Sinkronisasi BMKG Darat Laut - Tahap 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit 27 ADM4 dan 4 perairan (read-only; no publish)
+        run: python scripts/audit_sinkronisasi_bmkg.py
+      - name: Upload laporan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-bmkg-darat-laut-tahap2
+          path: bmkg_surface_audit_tahap2/
+          if-no-files-found: warn
