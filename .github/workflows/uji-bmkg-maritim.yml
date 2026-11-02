@@ -1,0 +1,27 @@
+name: Uji API BMKG Maritim - Tahap 1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Uji 4 wilayah perairan dan INAWAVES modelrun (read-only)
+        run: python scripts/probe_bmkg_marine.py
+      - name: Upload laporan audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: laporan-uji-bmkg-maritim
+          path: bmkg_marine_audit/
+          if-no-files-found: warn
