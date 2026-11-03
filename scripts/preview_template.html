@@ -1,0 +1,77 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BMKG Surface Wind – Tahap 3 (Review)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#193149;background:#f1f5f8}
+*{box-sizing:border-box}body{margin:0}header{background:#124d7d;color:#fff;padding:14px 20px}header b{font-size:19px}header small{display:block;margin-top:4px;opacity:.88}main{max-width:1320px;margin:auto;padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}
+#map{height:calc(100vh - 158px);min-height:450px;border-radius:12px;z-index:0}article,section{background:white;border:1px solid #dce7ef;border-radius:12px;padding:13px;box-shadow:0 2px 7px #0d365311}.controls{display:grid;gap:8px}h2{font-size:16px;margin:0 0 10px}h3{font-size:13px;margin:12px 0 7px}select{width:100%;padding:10px;border:1px solid #b7cadb;border-radius:7px;background:#fff;font:inherit;font-size:13px}small,.muted{color:#607286;font-size:12px;line-height:1.45}#status{padding:9px;border-radius:8px;background:#e7f2fc;font-size:12px;line-height:1.5;margin-top:10px}.row{border-top:1px solid #ebf1f5;padding:8px 0;display:flex;gap:8px;justify-content:space-between;font-size:12px}.row strong{text-align:right}.legend{font-size:12px;margin:0 0 7px;line-height:1.55} .notice{background:#fff8e4;border:1px solid #f1e1a9;color:#755615;padding:9px;border-radius:8px;font-size:12px;line-height:1.5}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}.wind{display:inline-flex;align-items:center;justify-content:center;font-weight:900;line-height:1;background:#fff;border:1px solid #ffffffb5;border-radius:50%;width:27px;height:27px;box-shadow:0 1px 4px #0027} .wind i{font-style:normal;font-size:21px;display:block;transform-origin:center;color:#1266a8}.wind.sea i{color:#0e967c}.windspeed{display:inline-block;background:#ffffffdb;border-radius:5px;font-size:10px;padding:2px 4px;font-weight:700;border:1px solid #ccc9}.leaflet-div-icon{background:none;border:none}.footer{font-size:11px;color:#687b8c;text-align:center;padding:4px 12px 14px}
+@media(max-width:850px){main{display:flex;flex-direction:column;gap:10px}#map{height:55vh;min-height:360px}header b{font-size:16px}}
+</style></head><body>
+<header><b>BMKG Surface Wind · Tahap 3</b><small>Prototipe audit vektor darat–laut · 27 desa + 4 perairan · BUKAN streamline grid</small></header>
+<main><article style="padding:8px"><div id="map"></div></article>
+<section><h2>Prakiraan dan QC sumber</h2><div class="controls"><label for="time">Waktu prakiraan (WITA)</label><select id="time"><option>Memuat data audit…</option></select></div><div id="status">Mengambil berkas JSON pengujian…</div>
+<h3>Legenda</h3><div class="legend"><span class="dot" style="background:#1266a8"></span>Angin darat: titik desa/kelurahan BMKG<br><span class="dot" style="background:#0e967c"></span>Angin laut: wakil wilayah perairan BMKG<br><span class="dot" style="background:#d5b355"></span>Poligon perairan resmi (bukan grid)</div>
+<div id="counts"></div><h3>Prakiraan laut per wilayah</h3><div id="sea">—</div>
+<h3>Batas interpretasi</h3><div class="notice">Sinkronisasi waktu ≠ validasi akurasi. Arah laut berasal dari kategori mata angin; sudut panah hanya titik tengah sektor. Tinggi angin laut belum terkonfirmasi. Tidak ada streamline interpolasi atau keputusan perizinan.</div><p class="muted" id="generated"></p></section></main><div class="footer">Sumber BMKG: API Prakiraan Cuaca ADM4 dan BMKG Maritim. Visualisasi percobaan, bukan produk operasional resmi.</div>
+<script>
+'use strict';
+const map=L.map('map',{preferCanvas:true}).setView([-8.75,115.18],10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'© OpenStreetMap'}).addTo(map);
+const overlay=L.layerGroup().addTo(map), shapes=L.layerGroup().addTo(map);
+let dataset=null, seaPositions={};
+const $=(id)=>document.getElementById(id);
+function nice(t){return String(t||'').replace('T',' ');}
+function fmt(row){if(!row)return 'Tidak tersedia'; const ang=row.from_deg===null?'tenang':row.from_deg+'° FROM';return `${row.speed_kt} kt · ${ang}`;}
+function pointInRing(p,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+ const a=ring[i],b=ring[j]; const x=p[0],y=p[1];
+ if(((a[1]>y)!==(b[1]>y)) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])inside=!inside;
+ }return inside;}
+function polygonContains(p,polygon){return pointInRing(p,polygon[0]) && !polygon.slice(1).some(r=>pointInRing(p,r));}
+function interiorFeature(feature){const g=feature.geometry;if(!g)return null;
+ let polygons=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+ if(!polygons.length)return null;
+ polygons=polygons.slice().sort((a,b)=>bboxArea(b[0])-bboxArea(a[0]));
+ const rings=polygons[0];const list=rings[0];const x0=Math.min(...list.map(p=>p[0])),x1=Math.max(...list.map(p=>p[0]));
+ const y0=Math.min(...list.map(p=>p[1])),y1=Math.max(...list.map(p=>p[1]));
+ const xmid=(x0+x1)/2,ymid=(y0+y1)/2;
+ if(polygonContains([xmid,ymid],rings))return [ymid,xmid];
+ let best=null,score=Infinity;
+ for(let k=1;k<=29;k++)for(let j=1;j<=29;j++){
+ const p=[x0+(x1-x0)*k/30,y0+(y1-y0)*j/30];if(!polygonContains(p,rings))continue;
+ const d=(p[0]-xmid)**2+(p[1]-ymid)**2;if(d<score){score=d;best=p;}}
+ return best?[best[1],best[0]]:null;
+}
+function bboxArea(r){let xs=r.map(p=>p[0]),ys=r.map(p=>p[1]);return (Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys));}
+function windIcon(row,isSea){const to=(Number(row.from_deg)+180)%360; const kind=isSea?'sea':'land';
+ const color=isSea?'#0e967c':'#1266a8';
+ const glyph=row.from_deg==null?'•':`<i style="color:${color};transform:rotate(${to}deg)">↑</i>`;
+ return L.divIcon({className:'',html:`<span class="wind ${kind}">${glyph}</span>`,iconSize:[30,30],iconAnchor:[15,15]});}
+function add(row,lat,lon,name,isSea){if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+ const marker=L.marker([lat,lon],{icon:windIcon(row,isSea)}).addTo(overlay);
+ const popup=document.createElement('div'),strong=document.createElement('strong'),details=document.createElement('p');
+ strong.textContent=name;details.textContent=fmt(row)+' · '+(row.method==='interpolated'?'waktu diinterpolasi':'waktu tepat');
+ popup.append(strong,details);marker.bindPopup(popup);
+}
+function paint(index){if(!dataset)return;const item=dataset.valid_times[index];if(!item)return;
+ overlay.clearLayers();const loc=Object.fromEntries(dataset.land_sites.map(s=>[s.adm4,s]));
+ item.land.forEach(w=>{const s=loc[w.adm4];if(s)add(w,s.lat,s.lon,s.name,false)});
+ item.marine.forEach(w=>{const s=dataset.marine_areas.find(e=>e.code===w.code); const p=seaPositions[w.code];if(p)add(w,p[0],p[1],s?s.name:w.code,true)});
+ $('counts').innerHTML='';
+ const infos=[['Darat waktu tepat',item.land_exact],['Darat interpolasi waktu',item.land_temporal_interp],['Laut waktu tepat',item.marine_exact]];
+ infos.forEach(([label,value])=>{const e=document.createElement('div');e.className='row';const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=value;e.append(a,b);$('counts').appendChild(e)});
+ $('sea').replaceChildren();item.marine.forEach(w=>{const s=dataset.marine_areas.find(e=>e.code===w.code);const e=document.createElement('div');e.className='row';const a=document.createElement('span'),b=document.createElement('strong');a.textContent=(s?.name)||w.code;b.textContent=fmt(w);e.append(a,b);$('sea').append(e)});
+ $('status').textContent='Waktu valid '+item.valid_wita+' · data darat '+item.land.length+' titik, laut '+item.marine.length+' wilayah. Status: QC waktu saja, belum divalidasi meteorologis.';
+}
+async function start(){try{const resp=await fetch('./bmkg_surface_preview.json',{cache:'no-store'});if(!resp.ok)throw new Error('HTTP '+resp.status);
+ const data=await resp.json();dataset=data;if(!Array.isArray(data.valid_times)||!data.valid_times.length)throw new Error('Belum ada waktu prakiraan yang memenuhi QC');
+ const gj=data.marine_polygons;if(gj && gj.features){L.geoJSON(gj,{style:{weight:1.5,color:'#b28e22',fillColor:'#e9c565',fillOpacity:.10},onEachFeature:(f,l)=>{
+ const code=f.properties?.ID_MAR;l.bindTooltip((f.properties?.perairan)||code||'Wilayah perairan');if(code)seaPositions[code]=interiorFeature(f)
+ }}).addTo(shapes)}
+ const sel=$('time');sel.replaceChildren();data.valid_times.forEach((x,i)=>{const o=document.createElement('option');o.value=i;o.textContent=x.valid_wita;sel.appendChild(o)});
+ sel.addEventListener('change',()=>paint(Number(sel.value)));paint(0);
+ $('generated').textContent='Data audit dibuat pada '+nice(data.generated_utc)+' UTC. Tinggi referensi laut belum ditetapkan; sumber tidak setara otomatis.';
+ if(!gj)$('status').textContent+=' GeoJSON perairan tidak berhasil dimuat: panah laut tidak ditampilkan.';
+ }catch(e){$('status').textContent='Data belum dapat dimuat: '+e.message+'. Gunakan server lokal HTTP/HTTPS dan pastikan JSON sejajar dengan preview.html.';console.error(e)}}
+start();
+</script></body></html>
