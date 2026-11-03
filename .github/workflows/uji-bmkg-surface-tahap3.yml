@@ -1,0 +1,25 @@
+name: Uji Peta Vektor BMKG Darat-Laut - Tahap 3
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Uji perhitungan dasar offline
+        run: python scripts/test_bmkg_surface_preview.py
+      - name: Download sumber BMKG, QC, dan buat preview
+        run: python scripts/build_bmkg_surface_preview.py
+      - name: Unggah hasil preview (tidak dipublish ke Pages)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmkg-surface-preview-tahap3
+          path: bmkg_surface_preview_tahap3/
+          retention-days: 7
+          if-no-files-found: warn
