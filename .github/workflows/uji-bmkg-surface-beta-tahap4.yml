@@ -1,0 +1,46 @@
+name: WindKite BMKG Surface Beta - Tahap 4
+on:
+  workflow_dispatch:
+  schedule:
+    # Up to 4 checks/day; GitHub schedule may start later than cron time.
+    - cron: '33 0,6,12,18 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: windkite-bmkg-surface-beta-artifact
+  cancel-in-progress: false
+jobs:
+  build-beta-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test Stage 3 functions
+        run: python scripts/test_bmkg_surface_preview.py
+      - name: Obtain new BMKG land and marine forecasts, QC and marine polygon
+        run: python scripts/build_bmkg_surface_preview.py
+      - name: Create standalone dashboard and JSON vector API
+        run: >-
+          python scripts/build_bmkg_surface_beta.py
+          --input bmkg_surface_preview_tahap3/bmkg_surface_preview.json
+          --output bmkg_surface_beta_tahap4
+          --template scripts/bmkg_surface_beta_template.html
+      - name: Verify beta product
+        run: python scripts/test_bmkg_surface_beta.py bmkg_surface_beta_tahap4
+      - name: Write job summary
+        run: |
+          echo '## WindKite BMKG Surface Beta (tahap pengujian)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Output: index.html (dashboard offline) + folder v1/ (JSON API vectors).' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Not a gridded wind field. Not an official validated BMKG product.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Nothing is published to GitHub Pages by this workflow.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload product beta ZIP data (artifact only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindKite-BMKG-Surface-Beta-Tahap4
+          path: bmkg_surface_beta_tahap4/
+          retention-days: 14
+          if-no-files-found: error
