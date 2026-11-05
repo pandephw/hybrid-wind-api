@@ -81,7 +81,7 @@ def build():
                         'gust_lower_than_speed_rows':report.get('gust_less_than_wind_speed_rows',0),
                         'source':'BMKG Maritim perairan'})
             sea_sets.append(rows)
-        print(f'Laut {code}: {report["status"]}',flush=True)
+        print(f'Laut {code}: {report["status"]}, active={report.get("active_at_audit")}, issued={report.get("issued_utc")}, valid_from={report.get("valid_from_utc")}, valid_to={report.get("valid_to_utc")}',flush=True)
         time.sleep(0.5)
     polys=None;polygon_error=None
     try: polys=load_polygons()
@@ -128,6 +128,7 @@ def build():
         'qc':{'configured_land':len(raw),'valid_land':len(land),'valid_marine':len(sea),
               'usable_times':len(times),'land_errors':[r for r in reports if r.get('status')!='OK'],
               'marine_errors':[r for r in sea_reports if r.get('status')!='OK'],
+              'marine_source_reports':sea_reports,
               'marine_gust_anomalies':sum(r.get('gust_less_than_wind_speed_rows',0) for r in sea_reports)},
     }
     (OUT/'bmkg_surface_preview.json').write_text(json.dumps(report,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8')
