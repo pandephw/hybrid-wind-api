@@ -2,7 +2,7 @@ name: WindKite BMKG Surface Beta - Tahap 4
 on:
   workflow_dispatch:
   schedule:
-    # Up to 4 checks/day; GitHub schedule may start later than cron time.
+    # Check at intervals. Source issuance may be delayed; GitHub cron is not exact.
     - cron: '33 0,6,12,18 * * *'
 permissions:
   contents: read
@@ -22,25 +22,43 @@ jobs:
       - name: Test Stage 3 functions
         run: python scripts/test_bmkg_surface_preview.py
       - name: Obtain new BMKG land and marine forecasts, QC and marine polygon
+        id: upstream
+        continue-on-error: true  # no valid common time writes a QC report, then exits 1
         run: python scripts/build_bmkg_surface_preview.py
+      - name: Interpret QC and write actionable availability report
+        id: readiness
+        run: python scripts/check_bmkg_surface_readiness.py
+      - name: Detect unexpected upstream build failure
+        if: steps.readiness.outputs.ready == 'true' && steps.upstream.outcome != 'success'
+        run: |
+          echo 'QC says READY but Stage 3 exited unexpectedly; check logs before accepting output.' >&2
+          exit 1
       - name: Create standalone dashboard and JSON vector API
+        if: steps.readiness.outputs.ready == 'true' && steps.upstream.outcome == 'success'
         run: >-
           python scripts/build_bmkg_surface_beta.py
           --input bmkg_surface_preview_tahap3/bmkg_surface_preview.json
           --output bmkg_surface_beta_tahap4
           --template scripts/bmkg_surface_beta_template.html
       - name: Verify beta product
+        if: steps.readiness.outputs.ready == 'true' && steps.upstream.outcome == 'success'
         run: python scripts/test_bmkg_surface_beta.py bmkg_surface_beta_tahap4
-      - name: Write job summary
-        run: |
-          echo '## WindKite BMKG Surface Beta (tahap pengujian)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Output: index.html (dashboard offline) + folder v1/ (JSON API vectors).' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Not a gridded wind field. Not an official validated BMKG product.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Nothing is published to GitHub Pages by this workflow.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload product beta ZIP data (artifact only)
+      - name: Upload NEW product beta artifact, only when source data valid
+        if: steps.readiness.outputs.ready == 'true' && steps.upstream.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: WindKite-BMKG-Surface-Beta-Tahap4
           path: bmkg_surface_beta_tahap4/
           retention-days: 14
           if-no-files-found: error
+      - name: Upload QC and source freshness diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindKite-BMKG-Surface-QC-Diagnostics
+          path: |
+            bmkg_surface_preview_tahap3/bmkg_surface_preview.json
+            bmkg_surface_preview_tahap3/RINGKASAN_TAHAP3.md
+            bmkg_surface_preview_tahap3/availability.json
+          retention-days: 14
+          if-no-files-found: warn
